@@ -1,4 +1,4 @@
-const CACHE_NAME = 'basketball-stat-tracker-v1';
+const CACHE_NAME = 'basketball-stat-tracker-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,9 +7,11 @@ const urlsToCache = [
   '/components/GameLog.tsx',
   '/components/PlayerSummary.tsx',
   '/components/StatControls.tsx',
+  '/components/GameManager.tsx',
   '/services/geminiService.ts',
   '/types.ts',
   '/utils/statCalculations.ts',
+  '/utils/csvExport.ts',
   'https://cdn.tailwindcss.com'
 ];
 
@@ -25,22 +27,32 @@ self.addEventListener('install', event => {
   );
 });
 
-// Cache and return requests
+// Stale-while-revalidate strategy
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+    caches.match(event.request).then(cachedResponse => {
+      const fetchPromise = fetch(event.request).then(networkResponse => {
+        // Check if we received a valid response to cache
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          event.request.method === 'GET' &&
+          !event.request.url.includes('generativelanguage')
+        ) {
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, networkResponse.clone());
+          });
         }
-        return fetch(event.request);
-      }
-    )
+        return networkResponse;
+      });
+
+      // Return cached response if available, otherwise wait for the network.
+      return cachedResponse || fetchPromise;
+    })
   );
 });
 
-// Update a service worker
+// Update a service worker and remove old caches
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(

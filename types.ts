@@ -25,3 +25,14 @@ export interface LogEntry {
   actionText: string;
   statChanges: Partial<Stats>;
 }
+
+export interface SavedGame {
+  id: string;
+  lastModified: number;
+  playerName: string;
+  opposition: string;
+  gameDate: string;
+  stats: Stats;
+  log: LogEntry[];
+  playerPhoto: string | null;
+}
