@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import type { Stats } from '../types';
 import type { LogEntry } from '../types';
 import { calculatePoints, calculatePercentage } from '../utils/statCalculations';
@@ -36,37 +36,43 @@ const formatLogForPrompt = (log: LogEntry[]): string => {
     return log.map(entry => `- ${entry.timestamp}: ${entry.actionText}`).join('\n');
 }
 
-export const generateGameSummary = async (playerName: string, opposition: string, gameDate: string, stats: Stats, log: LogEntry[]): Promise<string> => {
+export const generateGameSummary = async (playerName: string, opposition: string, gameDate: string, stats: Stats, log: LogEntry[]): Promise<AsyncIterable<GenerateContentResponse>> => {
   const statsSummary = formatStatsForPrompt(stats);
   const logSummary = formatLogForPrompt(log.slice(-30)); // Use last 30 events to keep prompt size reasonable
 
   const prompt = `
-You are a professional basketball analyst providing a performance report for a player named ${playerName}.
-The report is for the game against ${opposition} on ${gameDate}.
-Based on the final stats and a partial game log below, write a concise and insightful summary of their performance.
-Highlight their key contributions, strengths, and areas for improvement observed during this game. Be realistic and analytical.
+You're an energetic and super positive basketball commentator, like someone from a fun sports highlight show. Your job is to give a hype-filled and motivating summary for a player named ${playerName} after their game against ${opposition} on ${gameDate}.
 
-**Final Stat Line:**
+The audience is the player, who is in middle school, so keep the tone fun, exciting, and easy to understand. Use exclamation points and encouraging words!
+
+Look at their final stats and the recent plays from the game log.
+- Celebrate the awesome things they did! What were their biggest highlights?
+- Point out their hustle and smart plays.
+- Gently suggest one or two things they can practice to become an even more unstoppable force on the court next time. Frame it as a fun challenge!
+
+Keep it concise, positive, and full of energy!
+
+**Here are the stats:**
 ${statsSummary}
 
-**Game Event Log (Recent Events):**
+**Recent Action from the Game:**
 ${logSummary}
 
-**Analysis:**
+**Hype Summary:**
 `.trim();
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await ai.models.generateContentStream({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-            temperature: 0.5,
+            temperature: 0.7, // Increased for more creative/fun responses
             topP: 0.95,
         }
     });
-    return response.text;
+    return response;
   } catch (error) {
     console.error("Error generating game summary:", error);
-    return "There was an error generating the game summary. Please check your API key and network connection.";
+    throw new Error("There was an error generating the game summary. Please check your API key and network connection.");
   }
 };
