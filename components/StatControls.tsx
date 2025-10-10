@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 // Icon Definitions
@@ -49,7 +48,7 @@ interface StatButtonProps {
 }
 
 const StatButton: React.FC<StatButtonProps> = ({ children, onClick, variant = 'default', className = '', icon, disabled }) => {
-    const baseClasses = 'w-full text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none';
+    const baseClasses = 'w-full text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none';
     const variantClasses = {
         default: 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500',
         success: 'bg-green-600 hover:bg-green-700 focus:ring-green-500',

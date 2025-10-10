@@ -142,6 +142,7 @@ const App: React.FC = () => {
 
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [gameToDelete, setGameToDelete] = useState<Game | null>(null);
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
   const [playerToEdit, setPlayerToEdit] = useState<Player | null>(null);
@@ -149,6 +150,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'log' | 'history'>('log');
   
   const playerDropdownRef = useRef<HTMLDivElement>(null);
+  const isInitialized = useRef(false);
 
   const initializeNewPlayer = (id: string, name = 'Player 1', photo: string | null = null) => {
     const newPlayer: Player = { id, name, photo };
@@ -185,11 +187,13 @@ const App: React.FC = () => {
       console.error("Error loading state, initializing new state:", error);
       localStorage.removeItem(STORAGE_KEY);
       initializeNewPlayer(crypto.randomUUID());
+    } finally {
+        isInitialized.current = true;
     }
   }, []);
 
   useEffect(() => {
-    if (players.length > 0 && activePlayerId) {
+    if (isInitialized.current) {
         try {
             const stateToSave = { players, activePlayerId, playerGames };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
@@ -253,6 +257,21 @@ const App: React.FC = () => {
     const updatedGame = { ...currentGame, stats: newStats, log: newLog };
     updatePlayerGames(activePlayerId, [updatedGame, ...activePlayerGames.slice(1)]);
   }, [activePlayerId, currentGame, activePlayerGames]);
+
+  const handleResetGame = () => {
+    if (!activePlayerId || !currentGame) return;
+
+    const resetGame = {
+      ...currentGame,
+      stats: { ...INITIAL_STATS },
+      log: [],
+      summary: '',
+    };
+    
+    const newGamesForPlayer = [resetGame, ...activePlayerGames.slice(1)];
+    updatePlayerGames(activePlayerId, newGamesForPlayer);
+    setIsResetModalOpen(false);
+  };
 
   const handleDeleteGame = () => {
     if (!activePlayerId || !gameToDelete) return;
@@ -416,6 +435,7 @@ const App: React.FC = () => {
             <div className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0 flex items-center gap-2">
               <button onClick={handleStartNewGame} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Start New Game</button>
               <button onClick={handleExport} disabled={gameToDisplay.log.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors">Export CSV</button>
+              <button onClick={() => setIsResetModalOpen(true)} disabled={isReadOnly || currentGame?.log.length === 0} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors">Reset Game</button>
             </div>
           </header>
 
@@ -467,6 +487,17 @@ const App: React.FC = () => {
         title="Delete Game?"
       >
         <p>Are you sure you want to delete the game vs {gameToDelete?.opposition} on {gameToDelete?.gameDate}? This action cannot be undone.</p>
+      </Modal>
+
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onConfirm={handleResetGame}
+        title="Reset Current Game?"
+        confirmText="Reset"
+        confirmClass="bg-red-600 hover:bg-red-700"
+      >
+        <p>Are you sure you want to reset all stats and the log for the current game? This action cannot be undone.</p>
       </Modal>
 
       {isPlayerModalOpen && (
