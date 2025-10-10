@@ -1,60 +1,55 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StatControls } from './components/StatControls';
 import PlayerSummary from './components/PlayerSummary';
 import GameLog from './components/GameLog';
+import GameHistory from './components/GameHistory';
 import { generateGameSummary } from './services/geminiService';
 import { generateCsvContent } from './utils/csvExport';
-import type { Stats, LogEntry, StatKey } from './types';
+import type { Stats, LogEntry, StatKey, Player, Game } from './types';
 
-// The initial, empty state for a player's statistics. Used for starting a new game or resetting.
 const INITIAL_STATS: Stats = {
   FGM: 0, FGA: 0, TPM: 0, TPA: 0, FTM: 0, FTA: 0,
   OREB: 0, DREB: 0, AST: 0, STL: 0, BLK: 0, TOV: 0, PF: 0,
 };
 
-// A unique key for storing the application's state in the browser's localStorage.
-const STORAGE_KEY = 'basketball-stat-tracker-state';
+const createNewGame = (): Game => ({
+    id: crypto.randomUUID(),
+    stats: { ...INITIAL_STATS },
+    log: [],
+    opposition: 'Opponent',
+    gameDate: new Date().toISOString().split('T')[0],
+    summary: '',
+});
 
-// A default placeholder SVG for the player photo, displayed when no image has been uploaded.
-// This is encoded as a base64 Data URL to avoid needing a separate file asset.
+const STORAGE_KEY = 'basketball-stat-tracker-state-v3';
+
 const placeholderIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzZCNzI4MCI+PHBhdGggZD0iTTEyIDEyYzIuMjEgMCA0LTEuNzkgNC00cy0xLjc5LTQtNC00LTQgMS43OSA0IDQgMS43OSA0IDQgNHptMCAyYy0yLjY3IDAtOCAxLjM0LTggNHYyaDE2di0yYzAtMi42Ni01LjMzLTQtOC00eiIvPjwvc3ZnPg==';
 
-/**
- * @interface ModalProps
- * @description Defines the props (properties) for the generic Modal component.
- * This ensures type safety for any component that uses the Modal.
- */
 interface ModalProps {
-  isOpen: boolean;       // Controls whether the modal is visible.
-  onClose: () => void;   // Callback function to execute when closing the modal.
-  onConfirm: () => void; // Callback function to execute when the confirm action is taken.
-  title: string;         // The title displayed at the top of the modal.
-  children: React.ReactNode; // The content (body) of the modal.
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  children: React.ReactNode;
+  confirmText?: string;
+  confirmClass?: string;
 }
 
-/**
- * @component Modal
- * @description A reusable, accessible modal dialog component. It is used in this app
- * to get user confirmation before performing a destructive action like resetting the game.
- * It overlays the entire screen to focus the user's attention.
- */
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, children }) => {
-  // If the modal is not set to be open, render nothing.
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, children, confirmText = 'Confirm', confirmClass = 'bg-red-600 hover:bg-red-700' }) => {
   if (!isOpen) return null;
 
   return (
-    // The backdrop overlay. Clicking it will close the modal.
     <div 
       className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4 transition-opacity duration-300 animate-fade-in"
       onClick={onClose}
-      role="dialog" // Identifies the element as a dialog window.
-      aria-modal="true" // Indicates that content outside the modal is inert.
-      aria-labelledby="modal-title" // Associates the modal with its title for screen readers.
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
     >
-      {/* The modal container. Clicking inside it does not close the modal. */}
       <div 
         className="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-700"
-        onClick={(e) => e.stopPropagation()} // Prevents clicks from bubbling up to the backdrop.
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 id="modal-title" className="text-xl font-bold text-white mb-4">{title}</h2>
         <div className="text-gray-300 mb-6">{children}</div>
@@ -62,16 +57,16 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, childr
           <button 
             onClick={onClose} 
             className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors"
-            aria-label="Cancel action" // Provides an accessible label for the button.
+            aria-label="Cancel action"
           >
             Cancel
           </button>
           <button 
             onClick={onConfirm} 
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
-            aria-label="Confirm action" // Provides an accessible label for the button.
+            className={`px-4 py-2 text-white font-semibold rounded-lg transition-colors ${confirmClass}`}
+            aria-label="Confirm action"
           >
-            Confirm
+            {confirmText}
           </button>
         </div>
       </div>
@@ -79,430 +74,408 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, childr
   );
 };
 
-/**
- * @component App
- * @description This is the root component of the application. It serves as the main controller,
- * managing all application state, handling user interactions, and orchestrating data flow between
- * child components like the stat controls, player summary, and game log.
- */
+interface PlayerModalProps {
+    playerToEdit: Player | null;
+    onClose: () => void;
+    onSave: (player: Player) => void;
+}
+
+const PlayerModal: React.FC<PlayerModalProps> = ({ playerToEdit, onClose, onSave }) => {
+    const [name, setName] = useState(playerToEdit?.name || '');
+    const [photo, setPhoto] = useState<string | null>(playerToEdit?.photo || null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const isEditing = !!playerToEdit;
+
+    const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => setPhoto(reader.result as string);
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSave = () => {
+        if (!name.trim()) {
+            alert("Player name cannot be empty.");
+            return;
+        }
+        onSave({
+            id: playerToEdit?.id || crypto.randomUUID(),
+            name: name.trim(),
+            photo,
+        });
+    };
+    
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-700" onClick={e => e.stopPropagation()}>
+                <h2 className="text-xl font-bold text-white mb-6">{isEditing ? 'Edit Player' : 'Add New Player'}</h2>
+                <div className="flex flex-col items-center gap-4 mb-6">
+                    <div className="relative group">
+                        <img src={photo || placeholderIcon} alt="Player" className="h-24 w-24 rounded-full object-cover border-2 border-gray-600 group-hover:border-cyan-400 bg-gray-700" />
+                        <div onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full flex items-center justify-center cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white opacity-0 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </div>
+                        <input type="file" ref={fileInputRef} onChange={handlePhotoChange} accept="image/*" className="hidden" />
+                    </div>
+                    {photo && <button onClick={() => setPhoto(null)} className="text-sm text-red-400 hover:text-red-500">Remove Photo</button>}
+                </div>
+                <div className="mb-6">
+                    <label htmlFor="playerName" className="block text-sm font-medium text-gray-400 mb-1">Player Name</label>
+                    <input id="playerName" type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none" placeholder="Enter player name" />
+                </div>
+                <div className="flex justify-end gap-4">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">Cancel</button>
+                    <button onClick={handleSave} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg">Save</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const App: React.FC = () => {
-  // ================================================================================
-  // SECTION: State Management
-  // ================================================================================
-  // This section uses React hooks (`useState`, `useRef`) to manage all the dynamic data
-  // required for the application to function.
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [activePlayerId, setActivePlayerId] = useState<string | null>(null);
+  const [playerGames, setPlayerGames] = useState<Record<string, Game[]>>({});
+  const [viewingGame, setViewingGame] = useState<Game | null>(null);
 
-  // --- Game Setup State ---
-  // State related to the context of the game being tracked.
-  const [playerName, setPlayerName] = useState<string>('Player 1');
-  const [opposition, setOpposition] = useState<string>('Opponent');
-  const [gameDate, setGameDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [playerPhoto, setPlayerPhoto] = useState<string | null>(null); // Stored as a base64 Data URL.
-
-  // --- Core Game Data State ---
-  // The primary data being recorded during the game.
-  const [stats, setStats] = useState<Stats>(INITIAL_STATS);
-  const [log, setLog] = useState<LogEntry[]>([]); // A chronological list of all actions.
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [gameToDelete, setGameToDelete] = useState<Game | null>(null);
+  const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
+  const [playerToEdit, setPlayerToEdit] = useState<Player | null>(null);
+  const [isPlayerDropdownOpen, setIsPlayerDropdownOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'log' | 'history'>('log');
   
-  // --- AI Summary State ---
-  // State related to the AI-powered game summary feature.
-  const [isGenerating, setIsGenerating] = useState<boolean>(false); // Tracks if the API call is in progress.
-  const [summary, setSummary] = useState<string>(''); // Stores the generated summary text.
-  
-  // --- UI Component State ---
-  // State for controlling UI elements like modals and file inputs.
-  const fileInputRef = useRef<HTMLInputElement>(null); // A ref to programmatically access the hidden file input.
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false); // Controls the visibility of the reset confirmation modal.
+  const playerDropdownRef = useRef<HTMLDivElement>(null);
 
-  // ================================================================================
-  // SECTION: Local Storage Persistence
-  // ================================================================================
-  // These `useEffect` hooks provide persistence. They save the game state to the
-  // browser's localStorage, allowing the user to refresh or close the tab
-  // without losing their progress.
+  const initializeNewPlayer = (id: string, name = 'Player 1', photo: string | null = null) => {
+    const newPlayer: Player = { id, name, photo };
+    setPlayers(prev => [...prev, newPlayer]);
+    setPlayerGames(prev => ({...prev, [id]: [createNewGame()] }));
+    setActivePlayerId(id);
+  };
 
-  /**
-   * @effect loadStateFromLocalStorage
-   * @description This effect runs once when the component first mounts. It checks localStorage
-   * for any previously saved game state and, if found, hydrates the component's state with that data.
-   */
   useEffect(() => {
     try {
       const savedStateJSON = localStorage.getItem(STORAGE_KEY);
       if (savedStateJSON) {
         const savedState = JSON.parse(savedStateJSON);
-        // Safely set state, falling back to defaults if properties are missing.
-        if (savedState) {
-          setPlayerName(savedState.playerName || 'Player 1');
-          setOpposition(savedState.opposition || 'Opponent');
-          setGameDate(savedState.gameDate || new Date().toISOString().split('T')[0]);
-          setStats(savedState.stats || INITIAL_STATS);
-          setLog(savedState.log || []);
-          setPlayerPhoto(savedState.playerPhoto || null);
+        if (savedState && savedState.players?.length > 0) {
+          setPlayers(savedState.players);
+          setActivePlayerId(savedState.activePlayerId || savedState.players[0].id);
+          // V3 structure
+          if (savedState.playerGames) {
+             setPlayerGames(savedState.playerGames);
+          } else if (savedState.gameStates) { // V2 structure, migrate
+            const migratedGames: Record<string, Game[]> = {};
+            Object.keys(savedState.gameStates).forEach(pId => {
+              migratedGames[pId] = [{ ...savedState.gameStates[pId], id: crypto.randomUUID() }];
+            });
+            setPlayerGames(migratedGames);
+          }
+        } else {
+            throw new Error("No players found in saved state.");
         }
+      } else {
+        initializeNewPlayer(crypto.randomUUID());
       }
     } catch (error) {
-      // Catches potential errors, e.g., if localStorage is disabled or the data is corrupt.
-      console.error("Error loading state from localStorage:", error);
+      console.error("Error loading state, initializing new state:", error);
+      localStorage.removeItem(STORAGE_KEY);
+      initializeNewPlayer(crypto.randomUUID());
     }
-  }, []); // The empty dependency array `[]` ensures this effect runs only on the initial render.
+  }, []);
 
-  /**
-   * @effect saveStateToLocalStorage
-   * @description This effect runs whenever a key piece of game state changes. It bundles the current
-   * state into a single object and saves it to localStorage as a JSON string.
-   */
   useEffect(() => {
-    try {
-      const gameState = {
-        playerName,
-        opposition,
-        gameDate,
-        stats,
-        log,
-        playerPhoto,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
-    } catch (error) {
-      // Catches potential errors, e.g., if storage quota is exceeded.
-      console.error("Error saving state to localStorage:", error);
+    if (players.length > 0 && activePlayerId) {
+        try {
+            const stateToSave = { players, activePlayerId, playerGames };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        } catch (error) {
+            console.error("Error saving state to localStorage:", error);
+        }
     }
-    // The dependency array lists all state variables that should trigger a save operation.
-  }, [playerName, opposition, gameDate, stats, log, playerPhoto]);
+  }, [players, activePlayerId, playerGames]);
 
-  // ================================================================================
-  // SECTION: Core Logic Handlers
-  // ================================================================================
-  // These functions encapsulate the main business logic of the application, such as
-  // updating stats, undoing actions, and resetting the game state.
-
-  /**
-   * @callback handleStatUpdate
-   * @description This function is called when a stat button is pressed. It updates the stats object
-   * immutably and adds a new entry to the game log to record the action.
-   * `useCallback` is used for performance optimization, ensuring the function reference doesn't
-   * change on re-renders, which prevents unnecessary re-renders of child components (like `StatControls`).
-   */
-  const handleStatUpdate = useCallback((actionText: string, statChanges: Partial<Stats>) => {
-    // Update stats using a functional update to ensure we have the latest state.
-    setStats(prevStats => {
-      const newStats = { ...prevStats }; // Create a new object to maintain immutability.
-      // Iterate over the changes and apply them to the new stats object.
-      for (const key in statChanges) {
-        newStats[key as StatKey] += statChanges[key as StatKey]!;
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (playerDropdownRef.current && !playerDropdownRef.current.contains(event.target as Node)) {
+        setIsPlayerDropdownOpen(false);
       }
-      return newStats;
-    });
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-    // Create a new log entry for this action.
+  const activePlayer = players.find(p => p.id === activePlayerId);
+  const activePlayerGames = activePlayerId ? playerGames[activePlayerId] || [] : [];
+  const currentGame = activePlayerGames[0];
+  const gameToDisplay = viewingGame || currentGame;
+  const isReadOnly = !!viewingGame;
+
+  const updatePlayerGames = (playerId: string, games: Game[]) => {
+    setPlayerGames(prev => ({ ...prev, [playerId]: games }));
+  };
+  
+  const handleStatUpdate = useCallback((actionText: string, statChanges: Partial<Stats>) => {
+    if (!activePlayerId || !currentGame) return;
+    
+    const newStats = { ...currentGame.stats };
+    for (const key in statChanges) {
+        newStats[key as StatKey] += statChanges[key as StatKey]!;
+    }
+    
     const newLogEntry: LogEntry = {
-      id: crypto.randomUUID(), // A universally unique ID for the log entry, useful for keys and undo operations.
+      id: crypto.randomUUID(),
       timestamp: new Date().toLocaleTimeString(),
       actionText,
-      statChanges, // Store the exact changes for the undo functionality.
+      statChanges,
     };
-    // Prepend the new entry to the log so it appears at the top of the list.
-    setLog(prevLog => [newLogEntry, ...prevLog]);
-  }, []); // Empty dependency array as this function doesn't depend on any state props.
+    
+    const updatedGame = { ...currentGame, stats: newStats, log: [newLogEntry, ...currentGame.log] };
+    updatePlayerGames(activePlayerId, [updatedGame, ...activePlayerGames.slice(1)]);
+  }, [activePlayerId, currentGame, activePlayerGames]);
 
-  /**
-   * @callback handleUndo
-   * @description Reverts a specific action from the game log. It finds the action by its ID,
-   * subtracts its stat changes from the current stats, and removes the entry from the log.
-   * `useCallback` depends on `log` because it needs access to the current log to find the entry to undo.
-   */
   const handleUndo = useCallback((id: string) => {
-    const entryToUndo = log.find(entry => entry.id === id);
-    if (!entryToUndo) return; // Exit if the entry isn't found.
+    if (!activePlayerId || !currentGame) return;
+    
+    const entryToUndo = currentGame.log.find(entry => entry.id === id);
+    if (!entryToUndo) return;
 
-    // Revert the stats by subtracting the changes from the original action.
-    setStats(prevStats => {
-      const newStats = { ...prevStats };
-      for (const key in entryToUndo.statChanges) {
+    const newStats = { ...currentGame.stats };
+    for (const key in entryToUndo.statChanges) {
         newStats[key as StatKey] -= entryToUndo.statChanges[key as StatKey]!;
-      }
-      return newStats;
-    });
-
-    // Remove the undone entry from the log.
-    setLog(prevLog => prevLog.filter(entry => entry.id !== id));
-  }, [log]); // This function must be re-created if the `log` state changes.
-
-  /**
-   * @function handleConfirmReset
-   * @description Resets the entire application state to its initial values, effectively
-   * starting a new game. It also clears the persisted state from localStorage.
-   */
-  const handleConfirmReset = () => {
-    // Reset all state variables to their default values.
-    setStats(INITIAL_STATS);
-    setLog([]);
-    setSummary('');
-    setPlayerName('Player 1');
-    setOpposition('Opponent');
-    setGameDate(new Date().toISOString().split('T')[0]);
-    setPlayerPhoto(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (error) {
-      console.error("Error clearing state from localStorage:", error);
     }
-    // Close the confirmation modal after the reset is complete.
-    setIsResetModalOpen(false);
+    
+    const newLog = currentGame.log.filter(entry => entry.id !== id);
+    const updatedGame = { ...currentGame, stats: newStats, log: newLog };
+    updatePlayerGames(activePlayerId, [updatedGame, ...activePlayerGames.slice(1)]);
+  }, [activePlayerId, currentGame, activePlayerGames]);
+
+  const handleDeleteGame = () => {
+    if (!activePlayerId || !gameToDelete) return;
+    const newGames = activePlayerGames.filter(g => g.id !== gameToDelete.id);
+    if (viewingGame?.id === gameToDelete.id) {
+        setViewingGame(null);
+    }
+    if (newGames.length === 0) {
+        newGames.push(createNewGame());
+    }
+    updatePlayerGames(activePlayerId, newGames);
+    setIsDeleteModalOpen(false);
+    setGameToDelete(null);
   };
-
-  // ================================================================================
-  // SECTION: API and External Interactions
-  // ================================================================================
-  // Functions for interacting with external services (like the Gemini API) or browser
-  // features (like file downloads).
-
-  /**
-   * @function handleGenerateSummary
-   * @description Initiates a request to the Gemini API to generate a game summary.
-   * It handles the streaming response, updating the UI in real-time as text chunks arrive.
-   */
+  
   const handleGenerateSummary = async () => {
-    setIsGenerating(true); // Put the UI in a loading state.
-    setSummary(''); // Clear any previous summary.
+    if (!activePlayer || !activePlayerId || !gameToDisplay) return;
+    
+    setIsGenerating(true);
+    // Clear previous summary
+    const updateSummary = (summaryPart: string, isNew: boolean) => {
+      setPlayerGames(prev => {
+        const games = prev[activePlayerId];
+        const gameIndex = games.findIndex(g => g.id === gameToDisplay.id);
+        if (gameIndex === -1) return prev;
+        const updatedGame = { ...games[gameIndex], summary: isNew ? summaryPart : games[gameIndex].summary + summaryPart };
+        const newGames = [...games];
+        newGames[gameIndex] = updatedGame;
+        return { ...prev, [activePlayerId]: newGames };
+      });
+    };
+    
+    updateSummary('', true);
+
     try {
-      const stream = await generateGameSummary(playerName, opposition, gameDate, stats, log);
-      // As each chunk of text arrives from the stream, append it to the summary.
+      const stream = await generateGameSummary(activePlayer.name, gameToDisplay);
       for await (const chunk of stream) {
-        setSummary(prev => prev + chunk.text);
+        updateSummary(chunk.text, false);
       }
     } catch (error) {
       console.error("Error streaming summary:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-      setSummary(`Error: ${errorMessage}`); // Display a user-friendly error message.
+      updateSummary(`Error: ${errorMessage}`, true);
     } finally {
-      setIsGenerating(false); // Ensure the loading state is turned off, even if an error occurs.
+      setIsGenerating(false);
     }
   };
 
-  /**
-   * @function handleExport
-   * @description Generates a CSV file of the game stats and log, then triggers a
-   * download in the user's browser.
-   */
   const handleExport = () => {
-    if (log.length === 0) {
-      alert("No stats to export.");
+    if (!activePlayer || !gameToDisplay || gameToDisplay.log.length === 0) {
+      alert("No stats to export for this game.");
       return;
     }
 
-    const csvContent = generateCsvContent(playerName, opposition, gameDate, stats, log);
-    // Create a Blob, which is a file-like object of immutable, raw data.
+    const { opposition, gameDate, stats, log } = gameToDisplay;
+    const csvContent = generateCsvContent(activePlayer.name, opposition, gameDate, stats, log);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     
-    // Sanitize player/opponent names for a clean filename.
-    const sanitizedPlayer = playerName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const sanitizedPlayer = activePlayer.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const sanitizedOpponent = opposition.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const fileName = `${sanitizedPlayer}_vs_${sanitizedOpponent}_${gameDate}.csv`;
 
-    // The "temporary link" trick: create a hidden link, set its href to the blob URL,
-    // programmatically click it to trigger the download, then remove it.
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
     link.setAttribute("download", fileName);
-    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url); // Clean up the object URL to release memory.
+    URL.revokeObjectURL(url);
+  };
+  
+  const handleStartNewGame = () => {
+    if (!activePlayerId) return;
+    const newGame = createNewGame();
+    updatePlayerGames(activePlayerId, [newGame, ...activePlayerGames]);
+    setViewingGame(null);
+    setActiveTab('log');
   };
 
-  // ================================================================================
-  // SECTION: UI Event Handlers
-  // ================================================================================
-  // These handlers are for direct user interactions with specific UI elements,
-  // such as uploading or removing the player's photo.
-
-  /**
-   * @function handlePhotoUploadClick
-   * @description When the user clicks the photo area, this function programmatically
-   * triggers a click on the hidden file input element, opening the file selection dialog.
-   */
-  const handlePhotoUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleOpenPlayerModal = (player: Player | null) => {
+    setPlayerToEdit(player);
+    setIsPlayerModalOpen(true);
+    setIsPlayerDropdownOpen(false);
   };
 
-  /**
-   * @function handlePhotoChange
-   * @description This is triggered when the user selects a file in the file dialog.
-   * It uses the FileReader API to read the selected image as a base64 Data URL
-   * and stores it in the component's state, which updates the displayed image.
-   */
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPlayerPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handleSavePlayer = (player: Player) => {
+    const isEditing = players.some(p => p.id === player.id);
+    if (isEditing) {
+        setPlayers(players.map(p => p.id === player.id ? player : p));
+    } else {
+        initializeNewPlayer(player.id, player.name, player.photo);
+    }
+    setIsPlayerModalOpen(false);
+    setPlayerToEdit(null);
+  };
+
+  const handleSelectPlayer = (playerId: string) => {
+    setActivePlayerId(playerId);
+    setViewingGame(null);
+    setIsPlayerDropdownOpen(false);
+    if (!playerGames[playerId] || playerGames[playerId].length === 0) {
+      setPlayerGames(prev => ({ ...prev, [playerId]: [createNewGame()] }));
     }
   };
 
-  /**
-   * @function handleRemovePhoto
-   * @description Clears the player photo from the state, reverting the UI to the
-   * default placeholder icon.
-   */
-  const handleRemovePhoto = (e: React.MouseEvent) => {
-      e.stopPropagation(); // Prevents the click from bubbling up to the parent div's click handler.
-      setPlayerPhoto(null);
+  const handleGameInfoChange = (field: 'opposition' | 'gameDate', value: string) => {
+    if (!activePlayerId || !currentGame) return;
+    const updatedGame = { ...currentGame, [field]: value };
+    updatePlayerGames(activePlayerId, [updatedGame, ...activePlayerGames.slice(1)]);
   };
+  
+  if (!activePlayer || !gameToDisplay) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <p className="text-white text-lg">Loading Game Data...</p>
+      </div>
+    );
+  }
 
-  // ================================================================================
-  // SECTION: Render Method
-  // ================================================================================
-  // This is the JSX that defines the structure and appearance of the component.
   return (
     <>
       <div className="min-h-screen bg-gray-900 text-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
-          {/* --- Application Header --- */}
           <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-gray-700">
-            {/* Game Info and Player Details */}
             <div className="w-full sm:w-auto">
               <h1 className="text-3xl font-bold text-white tracking-tight">Basketball Stat Tracker <span className="text-cyan-400">AI</span></h1>
-              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-4">
-                {/* Player Photo Uploader */}
-                <div className="relative group flex-shrink-0 self-center">
-                    <img
-                        src={playerPhoto || placeholderIcon}
-                        alt="Player photo"
-                        className="h-16 w-16 rounded-full object-cover border-2 border-gray-600 group-hover:border-cyan-400 transition-colors bg-gray-700"
-                    />
-                    <div
-                        onClick={handlePhotoUploadClick}
-                        className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full flex items-center justify-center cursor-pointer transition-opacity"
-                        role="button"
-                        aria-label="Upload player photo"
-                    >
-                        {/* Upload Icon */}
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
+              <div className="mt-3 flex items-center gap-4 flex-wrap">
+                <div className="relative group flex-shrink-0 cursor-pointer" onClick={() => handleOpenPlayerModal(activePlayer)} role="button" aria-label="Edit player photo and details">
+                    <img src={activePlayer.photo || placeholderIcon} alt="Player photo" className="h-16 w-16 rounded-full object-cover border-2 border-gray-600 group-hover:border-cyan-400 transition-colors bg-gray-700"/>
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full flex items-center justify-center transition-opacity">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white opacity-0 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg>
                     </div>
-                    {/* Remove Photo Button (only visible if a photo exists) */}
-                    {playerPhoto && (
-                        <button
-                            onClick={handleRemovePhoto}
-                            className="absolute -top-1 -right-1 bg-red-600 rounded-full p-1 text-white opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-all"
-                            aria-label="Remove player photo"
-                        >
-                            {/* 'X' Icon */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    )}
-                    {/* Hidden file input, controlled by the ref */}
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handlePhotoChange}
-                        accept="image/*"
-                        className="hidden"
-                        aria-hidden="true" // Hide from screen readers as it's not user-interactive.
-                    />
                 </div>
-                {/* Editable Inputs for Game Details */}
-                 <input
-                  type="text"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-cyan-400 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
-                  placeholder="Player Name"
-                  aria-label="Player Name"
-                />
+                <div className="relative" ref={playerDropdownRef}>
+                    <button onClick={() => setIsPlayerDropdownOpen(prev => !prev)} className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-cyan-400 focus:ring-2 focus:ring-cyan-500 focus:outline-none flex items-center gap-2">
+                        {activePlayer.name}
+                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isPlayerDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                    </button>
+                    {isPlayerDropdownOpen && (
+                        <div className="absolute top-full mt-2 w-64 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-10">
+                            <ul>
+                                {players.map(p => (
+                                    <li key={p.id} onClick={() => handleSelectPlayer(p.id)} className={`flex items-center gap-3 p-2 hover:bg-gray-700 cursor-pointer ${p.id === activePlayerId ? 'bg-cyan-900/50' : ''}`}>
+                                        <img src={p.photo || placeholderIcon} alt={p.name} className="h-8 w-8 rounded-full object-cover bg-gray-700" />
+                                        <span className="text-white">{p.name}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="p-2 border-t border-gray-700">
+                                <button onClick={() => handleOpenPlayerModal(null)} className="w-full text-center px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm">Add New Player</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
                  <span className="text-gray-500 hidden sm:inline">vs</span>
-                 <input
-                  type="text"
-                  value={opposition}
-                  onChange={(e) => setOpposition(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
-                  placeholder="Opponent"
-                  aria-label="Opponent Name"
-                />
-                 <input
-                  type="date"
-                  value={gameDate}
-                  onChange={(e) => setGameDate(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
-                  aria-label="Game Date"
-                />
+                 <input type="text" value={gameToDisplay.opposition} onChange={(e) => handleGameInfoChange('opposition', e.target.value)} disabled={isReadOnly} className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none disabled:bg-gray-800/50" placeholder="Opponent" aria-label="Opponent Name"/>
+                 <input type="date" value={gameToDisplay.gameDate} onChange={(e) => handleGameInfoChange('gameDate', e.target.value)} disabled={isReadOnly} className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-lg text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none disabled:bg-gray-800/50" aria-label="Game Date"/>
               </div>
             </div>
-            {/* Action Buttons */}
             <div className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0 flex items-center gap-2">
-              <button
-                  onClick={handleExport}
-                  disabled={log.length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                  Export CSV
-              </button>
-              <button
-                  onClick={() => setIsResetModalOpen(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                  Reset Game
-              </button>
+              <button onClick={handleStartNewGame} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Start New Game</button>
+              <button onClick={handleExport} disabled={gameToDisplay.log.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors">Export CSV</button>
             </div>
           </header>
 
-          {/* --- Main Content Area --- */}
+          {isReadOnly && (
+            <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-700 text-yellow-300 rounded-lg flex justify-between items-center">
+                <span>Viewing a past game. Stats are read-only.</span>
+                <button onClick={() => setViewingGame(null)} className="font-semibold hover:text-white">Return to Current Game</button>
+            </div>
+          )}
+
           <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column: Stats and Controls */}
             <div className="lg:col-span-2 space-y-6">
-              <PlayerSummary stats={stats} />
-              <StatControls onStatUpdate={handleStatUpdate} />
-              {/* AI Summary Section */}
+              <PlayerSummary stats={gameToDisplay.stats} />
+              <StatControls onStatUpdate={handleStatUpdate} disabled={isReadOnly} />
                <div className="bg-gray-800 rounded-xl p-4 shadow-lg">
                   <h2 className="text-xl font-bold mb-4 text-white">AI Game Summary</h2>
-                  <button
-                      onClick={handleGenerateSummary}
-                      disabled={isGenerating || log.length === 0}
-                      className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors"
-                  >
-                      {isGenerating ? 'Generating...' : 'Generate Performance Summary'}
+                  <button onClick={handleGenerateSummary} disabled={isGenerating || gameToDisplay.log.length === 0} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                      {isGenerating ? 'Generating...' : `Generate ${isReadOnly ? ' ' : 'Performance '}Summary`}
                   </button>
-                  {/* Summary display area, shown only when generating or if a summary exists */}
-                  {(summary || isGenerating) && (
+                  {(gameToDisplay.summary || isGenerating) && (
                       <div className="mt-4 p-4 bg-gray-700/50 rounded-lg min-h-[100px]">
                           <p className="whitespace-pre-wrap text-gray-300">
-                            {summary}
-                            {/* Blinking cursor effect while generating */}
-                            {isGenerating && <span className="inline-block w-2 h-5 bg-cyan-400 animate-pulse ml-1 align-bottom"></span>}
+                            {gameToDisplay.summary}
+                            {isGenerating && !gameToDisplay.summary && <span className="inline-block w-2 h-5 bg-cyan-400 animate-pulse ml-1 align-bottom"></span>}
                           </p>
                       </div>
                   )}
               </div>
             </div>
 
-            {/* Right Column: Game Log */}
             <div className="lg:col-span-1">
-              <GameLog log={log} onUndo={handleUndo} />
+              <div className="flex mb-2 border-b border-gray-700">
+                <button onClick={() => setActiveTab('log')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'log' ? 'border-b-2 border-cyan-400 text-white' : 'text-gray-400'}`}>Game Log</button>
+                <button onClick={() => setActiveTab('history')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'history' ? 'border-b-2 border-cyan-400 text-white' : 'text-gray-400'}`}>Game History</button>
+              </div>
+              
+              {activeTab === 'log' && <GameLog log={gameToDisplay.log} onUndo={isReadOnly ? () => {} : handleUndo} />}
+              {activeTab === 'history' && <GameHistory games={activePlayerGames} currentGameId={currentGame?.id} onSelectGame={(game) => setViewingGame(game)} onDeleteGame={(id) => { setGameToDelete(activePlayerGames.find(g => g.id === id) || null); setIsDeleteModalOpen(true); }} />}
+
             </div>
           </main>
         </div>
       </div>
 
-      {/* --- Modal Component --- */}
-      {/* This is rendered outside the main layout but is controlled by state. */}
       <Modal
-        isOpen={isResetModalOpen}
-        onClose={() => setIsResetModalOpen(false)}
-        onConfirm={handleConfirmReset}
-        title="Reset Game Data?"
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteGame}
+        title="Delete Game?"
       >
-        <p>Are you sure you want to reset the game? All currently tracked stats and game log entries will be permanently deleted.</p>
+        <p>Are you sure you want to delete the game vs {gameToDelete?.opposition} on {gameToDelete?.gameDate}? This action cannot be undone.</p>
       </Modal>
+
+      {isPlayerModalOpen && (
+        <PlayerModal 
+            playerToEdit={playerToEdit}
+            onClose={() => setIsPlayerModalOpen(false)}
+            onSave={handleSavePlayer}
+        />
+      )}
     </>
   );
 };

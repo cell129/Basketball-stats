@@ -1,6 +1,6 @@
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import type { Stats } from '../types';
-import type { LogEntry } from '../types';
+import type { Stats, LogEntry, Game } from '../types';
 import { calculatePoints, calculatePercentage } from '../utils/statCalculations';
 
 const API_KEY = process.env.API_KEY;
@@ -36,7 +36,8 @@ const formatLogForPrompt = (log: LogEntry[]): string => {
     return log.map(entry => `- ${entry.timestamp}: ${entry.actionText}`).join('\n');
 }
 
-export const generateGameSummary = async (playerName: string, opposition: string, gameDate: string, stats: Stats, log: LogEntry[]): Promise<AsyncIterable<GenerateContentResponse>> => {
+export const generateGameSummary = async (playerName: string, game: Pick<Game, 'opposition' | 'gameDate' | 'stats' | 'log'>): Promise<AsyncIterable<GenerateContentResponse>> => {
+  const { opposition, gameDate, stats, log } = game;
   const statsSummary = formatStatsForPrompt(stats);
   const logSummary = formatLogForPrompt(log.slice(-30)); // Use last 30 events to keep prompt size reasonable
 

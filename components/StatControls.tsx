@@ -45,17 +45,18 @@ interface StatButtonProps {
     variant?: 'default' | 'success' | 'danger';
     className?: string;
     icon?: React.ReactNode;
+    disabled?: boolean;
 }
 
-const StatButton: React.FC<StatButtonProps> = ({ children, onClick, variant = 'default', className = '', icon }) => {
-    const baseClasses = 'w-full text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 flex items-center justify-center gap-2';
+const StatButton: React.FC<StatButtonProps> = ({ children, onClick, variant = 'default', className = '', icon, disabled }) => {
+    const baseClasses = 'w-full text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none';
     const variantClasses = {
         default: 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500',
         success: 'bg-green-600 hover:bg-green-700 focus:ring-green-500',
         danger: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',
     };
     return (
-        <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} onClick={onClick}>
+        <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} onClick={onClick} disabled={disabled}>
             {icon}
             <span>{children}</span>
         </button>
@@ -64,6 +65,7 @@ const StatButton: React.FC<StatButtonProps> = ({ children, onClick, variant = 'd
 
 interface StatControlsProps {
   onStatUpdate: (actionText: string, statChanges: Record<string, number>) => void;
+  disabled: boolean;
 }
 
 const ControlSection: React.FC<{title: string; children: React.ReactNode}> = ({title, children}) => (
@@ -76,30 +78,32 @@ const ControlSection: React.FC<{title: string; children: React.ReactNode}> = ({t
 );
 
 
-export const StatControls: React.FC<StatControlsProps> = ({ onStatUpdate }) => {
+export const StatControls: React.FC<StatControlsProps> = ({ onStatUpdate, disabled }) => {
   return (
-    <div className="space-y-4">
-        <ControlSection title="Shooting">
-            <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('2-Point Shot Made', { FGM: 1, FGA: 1 })}>2PT Made</StatButton>
-            <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('2-Point Shot Missed', { FGA: 1 })}>2PT Miss</StatButton>
-            <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('3-Point Shot Made', { FGM: 1, FGA: 1, TPM: 1, TPA: 1 })}>3PT Made</StatButton>
-            <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('3-Point Shot Missed', { FGA: 1, TPA: 1 })}>3PT Miss</StatButton>
-            <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('Free Throw Made', { FTM: 1, FTA: 1 })}>FT Made</StatButton>
-            <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('Free Throw Missed', { FTA: 1 })}>FT Miss</StatButton>
-        </ControlSection>
+    <div className={disabled ? 'pointer-events-none opacity-60' : ''}>
+        <div className="space-y-4">
+            <ControlSection title="Shooting">
+                <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('2-Point Shot Made', { FGM: 1, FGA: 1 })}>2PT Made</StatButton>
+                <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('2-Point Shot Missed', { FGA: 1 })}>2PT Miss</StatButton>
+                <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('3-Point Shot Made', { FGM: 1, FGA: 1, TPM: 1, TPA: 1 })}>3PT Made</StatButton>
+                <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('3-Point Shot Missed', { FGA: 1, TPA: 1 })}>3PT Miss</StatButton>
+                <StatButton variant="success" icon={IconBasketball} onClick={() => onStatUpdate('Free Throw Made', { FTM: 1, FTA: 1 })}>FT Made</StatButton>
+                <StatButton variant="danger" icon={IconBasketball} onClick={() => onStatUpdate('Free Throw Missed', { FTA: 1 })}>FT Miss</StatButton>
+            </ControlSection>
 
-        <ControlSection title="Playmaking & Defense">
-            <StatButton icon={IconAssist} onClick={() => onStatUpdate('Assist', { AST: 1 })}>Assist</StatButton>
-            <StatButton icon={IconSteal} onClick={() => onStatUpdate('Steal', { STL: 1 })}>Steal</StatButton>
-            <StatButton icon={IconBlock} onClick={() => onStatUpdate('Block', { BLK: 1 })}>Block</StatButton>
-            <StatButton icon={IconTurnover} onClick={() => onStatUpdate('Turnover', { TOV: 1 })}>Turnover</StatButton>
-        </ControlSection>
+            <ControlSection title="Playmaking & Defense">
+                <StatButton icon={IconAssist} onClick={() => onStatUpdate('Assist', { AST: 1 })}>Assist</StatButton>
+                <StatButton icon={IconSteal} onClick={() => onStatUpdate('Steal', { STL: 1 })}>Steal</StatButton>
+                <StatButton icon={IconBlock} onClick={() => onStatUpdate('Block', { BLK: 1 })}>Block</StatButton>
+                <StatButton icon={IconTurnover} onClick={() => onStatUpdate('Turnover', { TOV: 1 })}>Turnover</StatButton>
+            </ControlSection>
 
-        <ControlSection title="Rebounding & Fouls">
-            <StatButton icon={IconRebound} onClick={() => onStatUpdate('Offensive Rebound', { OREB: 1 })}>Off. Rebound</StatButton>
-            <StatButton icon={IconRebound} onClick={() => onStatUpdate('Defensive Rebound', { DREB: 1 })}>Def. Rebound</StatButton>
-            <StatButton icon={IconFoul} onClick={() => onStatUpdate('Personal Foul', { PF: 1 })}>Foul</StatButton>
-        </ControlSection>
+            <ControlSection title="Rebounding & Fouls">
+                <StatButton icon={IconRebound} onClick={() => onStatUpdate('Offensive Rebound', { OREB: 1 })}>Off. Rebound</StatButton>
+                <StatButton icon={IconRebound} onClick={() => onStatUpdate('Defensive Rebound', { DREB: 1 })}>Def. Rebound</StatButton>
+                <StatButton icon={IconFoul} onClick={() => onStatUpdate('Personal Foul', { PF: 1 })}>Foul</StatButton>
+            </ControlSection>
+        </div>
     </div>
   );
 };

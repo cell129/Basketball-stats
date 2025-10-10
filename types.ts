@@ -25,3 +25,18 @@ export interface LogEntry {
   actionText: string;
   statChanges: Partial<Stats>;
 }
+
+export interface Player {
+  id: string;
+  name: string;
+  photo: string | null;
+}
+
+export interface Game {
+  id: string;
+  stats: Stats;
+  log: LogEntry[];
+  opposition: string;
+  gameDate: string;
+  summary: string;
+}
