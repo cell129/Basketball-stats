@@ -39,4 +39,6 @@ export interface Game {
   opposition: string;
   gameDate: string;
   summary: string;
+  playerTeamScore: number | null;
+  oppositionTeamScore: number | null;
 }

@@ -1,13 +1,13 @@
-import type { Stats, LogEntry } from '../types';
+
+import type { Stats, LogEntry, Game } from '../types';
 import { calculatePoints, calculatePercentage } from './statCalculations';
 
 export const generateCsvContent = (
     playerName: string,
-    opposition: string,
-    gameDate: string,
-    stats: Stats,
-    log: LogEntry[]
+    game: Game
 ): string => {
+    const { opposition, gameDate, stats, log, playerTeamScore, oppositionTeamScore } = game;
+
     // 1. Calculate derived stats
     const points = calculatePoints(stats);
     const totalRebounds = stats.OREB + stats.DREB;
@@ -17,12 +17,12 @@ export const generateCsvContent = (
 
     // 2. Create CSV headers and summary row
     const headers = [
-        'Player', 'Opponent', 'Date',
+        'Player', 'Opponent', 'Date', 'Player Team Score', 'Opponent Team Score',
         'PTS', 'FGM', 'FGA', 'FG%', '3PM', '3PA', '3P%', 'FTM', 'FTA', 'FT%',
         'OREB', 'DREB', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'PF'
     ];
     const summaryRow = [
-        playerName, opposition, gameDate,
+        playerName, opposition, gameDate, playerTeamScore ?? 'N/A', oppositionTeamScore ?? 'N/A',
         points, stats.FGM, stats.FGA, fgPercent, stats.TPM, stats.TPA, tpPercent, stats.FTM, stats.FTA, ftPercent,
         stats.OREB, stats.DREB, totalRebounds, stats.AST, stats.STL, stats.BLK, stats.TOV, stats.PF
     ];

@@ -36,13 +36,20 @@ const formatLogForPrompt = (log: LogEntry[]): string => {
     return log.map(entry => `- ${entry.timestamp}: ${entry.actionText}`).join('\n');
 }
 
-export const generateGameSummary = async (playerName: string, game: Pick<Game, 'opposition' | 'gameDate' | 'stats' | 'log'>): Promise<AsyncIterable<GenerateContentResponse>> => {
-  const { opposition, gameDate, stats, log } = game;
+export const generateGameSummary = async (playerName: string, game: Pick<Game, 'opposition' | 'gameDate' | 'stats' | 'log' | 'playerTeamScore' | 'oppositionTeamScore'>): Promise<AsyncIterable<GenerateContentResponse>> => {
+  const { opposition, gameDate, stats, log, playerTeamScore, oppositionTeamScore } = game;
   const statsSummary = formatStatsForPrompt(stats);
   const logSummary = formatLogForPrompt(log.slice(-30)); // Use last 30 events to keep prompt size reasonable
 
+  let scoreSummary = '';
+  if (playerTeamScore !== null && oppositionTeamScore !== null) {
+      const result = playerTeamScore > oppositionTeamScore ? 'won' : (playerTeamScore < oppositionTeamScore ? 'lost' : 'tied');
+      scoreSummary = `The final score was ${playerTeamScore} to ${oppositionTeamScore}, and their team ${result}.`;
+  }
+
   const prompt = `
 You're an energetic and super positive basketball commentator, like someone from a fun sports highlight show. Your job is to give a hype-filled and motivating summary for a player named ${playerName} after their game against ${opposition} on ${gameDate}.
+${scoreSummary}
 
 The audience is the player, who is in middle school, so keep the tone fun, exciting, and easy to understand. Use exclamation points and encouraging words!
 

@@ -1,6 +1,7 @@
+
 {
-  "name": "Basketball Stat Tracker AI",
-  "short_name": "Stat Tracker",
+  "name": "SwishStats",
+  "short_name": "SwishStats",
   "description": "An application for tracking a basketball player's stats in real-time during a game, with an AI-powered game summary generator.",
   "start_url": ".",
   "display": "standalone",
