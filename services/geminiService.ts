@@ -58,7 +58,7 @@ Look at their final stats and the recent plays from the game log.
 - Point out their hustle and smart plays.
 - Gently suggest one or two things they can practice to become an even more unstoppable force on the court next time. Frame it as a fun challenge!
 
-Keep it concise, positive, and full of energy!
+Keep it concise, positive, and full of energy! No more than 150 words!
 
 **Here are the stats:**
 ${statsSummary}
