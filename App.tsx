@@ -237,7 +237,7 @@ const App: React.FC = () => {
       <div className="container mx-auto">
         <header className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
-             <img src="/logo.svg" alt="SwishStats Logo" className="h-10 w-10" />
+             <img src="/SSLogo1.png" alt="SwishStats Logo" className="h-10 w-10" />
              <h1 className="text-3xl font-bold tracking-tight text-white">SwishStats</h1>
           </div>
           <div className="flex items-center gap-4">
@@ -261,7 +261,7 @@ const App: React.FC = () => {
         <main className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {!isGameActive ? (
             <div className="md:col-span-3 lg:col-span-4 flex flex-col items-center justify-center bg-gray-800 rounded-xl p-8 min-h-[500px]">
-                <img src="/logo.svg" alt="SwishStats Logo" className="h-24 w-24 mb-6" />
+                <img src="/SSLogo1.png" alt="SwishStats Logo" className="h-24 w-24 mb-6" />
                 <h2 className="text-4xl font-bold mb-4">Welcome to SwishStats</h2>
                 <p className="text-lg text-gray-400 mb-8">Ready to track some stats?</p>
                 <button onClick={handleNewGame} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-transform transform hover:scale-105">

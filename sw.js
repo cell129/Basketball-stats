@@ -2,7 +2,7 @@ const CACHE_NAME = 'basketball-stat-tracker-v1';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/logo.svg',
+  '/SSLogo1.png',
   '/index.tsx',
   '/App.tsx',
   '/components/GameLog.tsx',
